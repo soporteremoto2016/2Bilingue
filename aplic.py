@@ -1,5 +1,180 @@
-# ---------------- PROCESAR MENSAJE ----------------
+import streamlit as st
+from openai import OpenAI
+import json
+import re
 
+# ---------------- CONFIG ----------------
+st.set_page_config(page_title="2Bilingue Pro", page_icon="🌍")
+
+# ---------------- BASE DE DATOS ----------------
+def load_data():
+    try:
+        with open("data.json", "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_data(data):
+    with open("data.json", "w") as f:
+        json.dump(data, f)
+
+data = load_data()
+
+# ---------------- LOGIN ----------------
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if not st.session_state.user:
+    st.title("🔐 2Bilingue Pro")
+
+    user = st.text_input("Usuario")
+    password = st.text_input("Contraseña", type="password")
+
+    if st.button("Ingresar"):
+        if user in data:
+            if data[user]["password"] == password:
+                st.session_state.user = user
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta")
+        else:
+            data[user] = {
+                "password": password,
+                "stats": {"conversaciones": 0, "promedio": 0, "nivel": "A1"},
+                "errores": []
+            }
+            save_data(data)
+            st.success("Usuario creado")
+            st.session_state.user = user
+            st.rerun()
+
+    st.stop()
+
+# ---------------- USUARIO ----------------
+user_data = data[st.session_state.user]
+stats = user_data["stats"]
+
+# ---------------- SIDEBAR ----------------
+with st.sidebar:
+    st.header(f"👤 {st.session_state.user}")
+
+    st.subheader("📊 Progreso")
+    st.metric("Conversaciones", stats["conversaciones"])
+    st.metric("Nivel", stats["nivel"])
+    st.metric("Promedio", f'{stats["promedio"]}%')
+
+    if st.button("Cerrar sesión"):
+        st.session_state.user = None
+        st.rerun()
+
+# ---------------- API KEY ----------------
+if "api_key" not in st.session_state:
+    st.session_state.api_key = ""
+
+with st.sidebar:
+    st.subheader("🔑 API Key")
+
+    if st.session_state.api_key:
+        st.success("API conectada")
+    else:
+        api_input = st.text_input("API Key", type="password")
+        if st.button("Guardar API Key"):
+            st.session_state.api_key = api_input.strip()
+            st.rerun()
+
+if not st.session_state.api_key:
+    st.warning("Ingresa tu API Key")
+    st.stop()
+
+if not st.session_state.api_key.startswith("sk-"):
+    st.error("API Key inválida")
+    st.stop()
+
+client = OpenAI(api_key=st.session_state.api_key)
+
+# ---------------- SYSTEM PROMPT ----------------
+SYSTEM_PROMPT = """
+You are Lucy, a professional English teacher for Spanish speakers.
+
+Rules:
+- Always speak in English.
+- Correct errors in Spanish.
+
+Format:
+
+Corrección:
+- Error:
+- Corrección:
+- Explicación:
+
+If user says "finalizar":
+
+📊 Evaluación final:
+- Fluidez: %
+- Gramática: %
+- Vocabulario: %
+- Puntuación general: %
+
+🧠 Nivel estimado:
+📈 Recomendaciones:
+"""
+
+# ---------------- TEMA ----------------
+if "topic" not in st.session_state:
+    st.session_state.topic = ""
+
+if not st.session_state.topic:
+    st.title("🌍 2Bilingue Pro")
+    tema = st.text_input("🎯 Tema para practicar")
+
+    if st.button("Comenzar"):
+        st.session_state.topic = tema
+        st.session_state.messages = [
+            {"role": "assistant", "content": f"Great! Let's talk about {tema}. 😊"}
+        ]
+        st.rerun()
+
+    st.stop()
+
+# ---------------- CHAT ----------------
+st.title("🌍 2Bilingue Pro - Lucy 👩‍🏫")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
+
+# ---------------- INPUT UNIFICADO (VOZ + TEXTO) ----------------
+user_input = None
+
+# AUDIO
+audio = st.audio_input("🎤 Habla")
+
+if "audio_processed" not in st.session_state:
+    st.session_state.audio_processed = False
+
+if audio and not st.session_state.audio_processed:
+    st.session_state.audio_processed = True
+
+    transcript = client.audio.transcriptions.create(
+        model="gpt-4o-mini-transcribe",
+        file=audio
+    )
+
+    user_input = transcript.text
+
+# reset audio
+if not audio:
+    st.session_state.audio_processed = False
+
+# TEXTO
+text_input = st.chat_input("Escribe en inglés...")
+if text_input:
+    user_input = text_input
+
+# ---------------- PROCESAR MENSAJE ----------------
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
 
@@ -19,7 +194,7 @@ if user_input:
             reply = response.choices[0].message.content
             st.write(reply)
 
-            # 🔊 AUDIO
+            # AUDIO RESPUESTA
             audio_response = client.audio.speech.create(
                 model="gpt-4o-mini-tts",
                 voice="alloy",
@@ -38,9 +213,7 @@ if user_input:
             if "Evaluación final" in reply:
                 stats["conversaciones"] += 1
 
-                import re
                 match = re.search(r'Puntuación general: (\d+)', reply)
-
                 if match:
                     score = int(match.group(1))
                     prev = stats["promedio"]
@@ -61,3 +234,25 @@ if user_input:
 
             data[st.session_state.user] = user_data
             save_data(data)
+
+# ---------------- BOTONES ----------------
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("🇪🇸 Traducir"):
+        if st.session_state.messages:
+            texto = st.session_state.messages[-1]["content"]
+            traducido = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": f"Traduce al español: {texto}"}]
+            )
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": traducido.choices[0].message.content
+            })
+            st.rerun()
+
+with col2:
+    if st.button("🧹 Limpiar"):
+        st.session_state.messages = []
+        st.rerun()
