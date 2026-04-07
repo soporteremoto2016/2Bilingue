@@ -6,7 +6,7 @@ import os
 st.set_page_config(page_title="2Bilingue Pro", page_icon="🌍")
 
 # Cliente OpenAI
-client = OpenAI(api_key=os.getenv("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"))
+client = OpenAI(api_key=os.getenv("ff"))
 
 # Personalidad fija
 SYSTEM_PROMPT = "Eres un asistente bilingüe experto en inglés y español. Ayudas a traducir, conversar y explicar claramente."
