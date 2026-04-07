@@ -79,19 +79,24 @@ with st.sidebar:
     else:
         api_input = st.text_input("API Key", type="password")
         if st.button("Guardar API Key"):
-            st.session_state.api_key = api_input
+            st.session_state.api_key = api_input.strip()
             st.rerun()
 
 if not st.session_state.api_key:
     st.warning("Ingresa tu API Key")
     st.stop()
 
+if not st.session_state.api_key.startswith("sk-"):
+    st.error("API Key inválida")
+    st.stop()
+
 client = OpenAI(api_key=st.session_state.api_key)
 
 # ---------------- SYSTEM PROMPT ----------------
 SYSTEM_PROMPT = """
-You are Lucy, a professional English teacher.
+You are Lucy, a professional English teacher for Spanish speakers.
 
+Rules:
 - Always speak in English.
 - Correct errors in Spanish.
 
@@ -141,18 +146,34 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# ---------------- VOZ ----------------
+# ---------------- VOZ (FIX LOOP) ----------------
 audio = st.audio_input("🎤 Habla")
 
-if audio:
+if "audio_processed" not in st.session_state:
+    st.session_state.audio_processed = False
+
+if audio and not st.session_state.audio_processed:
+    st.session_state.audio_processed = True
+
     transcript = client.audio.transcriptions.create(
         model="gpt-4o-mini-transcribe",
         file=audio
     )
-    st.session_state.messages.append({"role": "user", "content": transcript.text})
+
+    texto = transcript.text
+
+    if not st.session_state.messages or st.session_state.messages[-1]["content"] != texto:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": texto
+        })
+
     st.rerun()
 
-# ---------------- INPUT ----------------
+if not audio:
+    st.session_state.audio_processed = False
+
+# ---------------- INPUT TEXTO ----------------
 if prompt := st.chat_input("Escribe en inglés..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
@@ -171,7 +192,7 @@ if prompt := st.chat_input("Escribe en inglés..."):
             reply = response.choices[0].message.content
             st.write(reply)
 
-            # AUDIO
+            # 🔊 AUDIO
             audio_response = client.audio.speech.create(
                 model="gpt-4o-mini-tts",
                 voice="alloy",
@@ -182,11 +203,11 @@ if prompt := st.chat_input("Escribe en inglés..."):
 
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
-            # ---------------- GUARDAR ERRORES ----------------
+            # Guardar errores
             if "Corrección:" in reply:
                 user_data["errores"].append(reply)
 
-            # ---------------- EVALUACIÓN ----------------
+            # Evaluación
             if "Evaluación final" in reply:
                 stats["conversaciones"] += 1
 
@@ -209,15 +230,14 @@ if prompt := st.chat_input("Escribe en inglés..."):
                     else:
                         stats["nivel"] = "C1"
 
-            # 💾 GUARDAR
             data[st.session_state.user] = user_data
             save_data(data)
 
-# ---------------- BOTONES ----------------
+# ---------------- TRADUCCIÓN + LIMPIAR ----------------
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("🇪🇸 Traducir a Español"):
+    if st.button("🇪🇸 Traducir"):
         if st.session_state.messages:
             texto = st.session_state.messages[-1]["content"]
             traducido = client.chat.completions.create(
