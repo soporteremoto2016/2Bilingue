@@ -67,6 +67,9 @@ with st.sidebar:
         st.session_state.user = None
         st.rerun()
 
+    st.divider()
+    modo_continuo = st.toggle("🎧 Modo conversación continua", value=True)
+
 # ---------------- API KEY ----------------
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
@@ -96,7 +99,6 @@ client = OpenAI(api_key=st.session_state.api_key)
 SYSTEM_PROMPT = """
 You are Lucy, a professional English teacher for Spanish speakers.
 
-Rules:
 - Always speak in English.
 - Correct errors in Spanish.
 
@@ -138,6 +140,7 @@ if not st.session_state.topic:
 
 # ---------------- CHAT ----------------
 st.title("🌍 2Bilingue Pro - Lucy 👩‍🏫")
+st.info("🎧 Habla con Lucy y mantén una conversación continua")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -146,40 +149,41 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# ---------------- INPUT UNIFICADO (VOZ + TEXTO) ----------------
+# ---------------- INPUT ----------------
 user_input = None
 
-# AUDIO
+# 🎤 AUDIO CONTINUO
 audio = st.audio_input("🎤 Habla")
 
-if "audio_processed" not in st.session_state:
-    st.session_state.audio_processed = False
+if "last_audio_id" not in st.session_state:
+    st.session_state.last_audio_id = None
 
-if audio and not st.session_state.audio_processed:
-    st.session_state.audio_processed = True
+if audio:
+    current_audio_id = str(audio)
 
-    transcript = client.audio.transcriptions.create(
-        model="gpt-4o-mini-transcribe",
-        file=audio
-    )
+    if current_audio_id != st.session_state.last_audio_id:
+        st.session_state.last_audio_id = current_audio_id
 
-    user_input = transcript.text
+        with st.spinner("🎧 Escuchando..."):
+            transcript = client.audio.transcriptions.create(
+                model="gpt-4o-mini-transcribe",
+                file=audio
+            )
 
-# reset audio
-if not audio:
-    st.session_state.audio_processed = False
+        user_input = transcript.text
 
-# TEXTO
-text_input = st.chat_input("Escribe en inglés...")
-if text_input:
-    user_input = text_input
+# 💬 TEXTO (solo si no está en modo continuo)
+if not modo_continuo:
+    text_input = st.chat_input("Escribe en inglés...")
+    if text_input:
+        user_input = text_input
 
-# ---------------- PROCESAR MENSAJE ----------------
+# ---------------- PROCESAR ----------------
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
 
     with st.chat_message("assistant"):
-        with st.spinner("Lucy está pensando..."):
+        with st.spinner("Lucy responde..."):
 
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -194,7 +198,7 @@ if user_input:
             reply = response.choices[0].message.content
             st.write(reply)
 
-            # AUDIO RESPUESTA
+            # 🔊 RESPUESTA EN VOZ
             audio_response = client.audio.speech.create(
                 model="gpt-4o-mini-tts",
                 voice="alloy",
