@@ -1,7 +1,5 @@
 import streamlit as st
 from openai import OpenAI
-import json
-import re
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="2Bilingue Pro", page_icon="🌍")
@@ -25,7 +23,7 @@ if "hablar_activo" not in st.session_state:
 if "last_audio_id" not in st.session_state:
     st.session_state.last_audio_id = None
 
-# ---------------- LOGIN SIMPLE ----------------
+# ---------------- LOGIN ----------------
 if not st.session_state.user:
     st.title("🔐 2Bilingue Pro")
 
@@ -102,21 +100,17 @@ if not st.session_state.topic:
 
 # ---------------- CHAT ----------------
 st.title("🎧 Lucy - Conversación hablada")
-st.info("Presiona 🎤 para hablar después de cada respuesta")
+st.info("Habla con Lucy usando el botón 🎤 después de cada respuesta")
 
-for msg in st.session_state.messages:
+for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
-
-# ---------------- BOTÓN HABLAR ----------------
-if st.button("🎤 Hablar"):
-    st.session_state.hablar_activo = True
 
 # ---------------- AUDIO ----------------
 user_input = None
 
 if st.session_state.hablar_activo:
-    st.warning("🎧 Grabando... habla ahora")
+    st.warning("🎧 Habla ahora...")
 
     audio = st.audio_input("Grabar voz")
 
@@ -160,7 +154,7 @@ if user_input:
             reply = response.choices[0].message.content
             st.write(reply)
 
-            # 🔊 VOZ
+            # 🔊 AUDIO RESPUESTA
             audio_response = client.audio.speech.create(
                 model="gpt-4o-mini-tts",
                 voice="alloy",
@@ -168,6 +162,11 @@ if user_input:
             )
 
             st.audio(audio_response.content, format="audio/mp3")
+
+            # 👉 BOTÓN DINÁMICO PARA HABLAR
+            if st.button("🎤 Responder hablando", key=f"btn_{len(st.session_state.messages)}"):
+                st.session_state.hablar_activo = True
+                st.rerun()
 
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
