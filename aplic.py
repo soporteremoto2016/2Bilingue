@@ -23,6 +23,28 @@ if "hablar_activo" not in st.session_state:
 if "last_audio_id" not in st.session_state:
     st.session_state.last_audio_id = None
 
+# ---------------- CSS BOTÓN FLOTANTE ----------------
+st.markdown("""
+<style>
+.floating-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #ff4b4b;
+    color: white;
+    border-radius: 50%;
+    width: 70px;
+    height: 70px;
+    font-size: 30px;
+    text-align: center;
+    line-height: 70px;
+    cursor: pointer;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+    z-index: 999;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------- LOGIN ----------------
 if not st.session_state.user:
     st.title("🔐 2Bilingue Pro")
@@ -74,14 +96,6 @@ You are Lucy, a professional English teacher.
 
 - Speak ONLY in English
 - Correct mistakes in Spanish
-
-If user says "finalizar":
-
-📊 Evaluación final:
-- Fluidez: %
-- Gramática: %
-- Vocabulario: %
-- Puntuación general: %
 """
 
 # ---------------- TEMA ----------------
@@ -100,11 +114,16 @@ if not st.session_state.topic:
 
 # ---------------- CHAT ----------------
 st.title("🎧 Lucy - Conversación hablada")
-st.info("Habla con Lucy usando el botón 🎤 después de cada respuesta")
 
-for i, msg in enumerate(st.session_state.messages):
+for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
+
+# ---------------- BOTÓN FLOTANTE ----------------
+clicked = st.button("🎤", key="floating_btn")
+
+if clicked:
+    st.session_state.hablar_activo = True
 
 # ---------------- AUDIO ----------------
 user_input = None
@@ -154,7 +173,6 @@ if user_input:
             reply = response.choices[0].message.content
             st.write(reply)
 
-            # 🔊 AUDIO RESPUESTA
             audio_response = client.audio.speech.create(
                 model="gpt-4o-mini-tts",
                 voice="alloy",
@@ -163,31 +181,9 @@ if user_input:
 
             st.audio(audio_response.content, format="audio/mp3")
 
-            # 👉 BOTÓN DINÁMICO PARA HABLAR
-            if st.button("🎤 Responder hablando", key=f"btn_{len(st.session_state.messages)}"):
-                st.session_state.hablar_activo = True
-                st.rerun()
-
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
-# ---------------- BOTONES EXTRA ----------------
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("🇪🇸 Traducir último"):
-        if st.session_state.messages:
-            texto = st.session_state.messages[-1]["content"]
-            traducido = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": f"Traduce al español: {texto}"}]
-            )
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": traducido.choices[0].message.content
-            })
-            st.rerun()
-
-with col2:
-    if st.button("🧹 Limpiar"):
-        st.session_state.messages = []
-        st.rerun()
+# ---------------- LIMPIAR ----------------
+if st.button("🧹 Limpiar conversación"):
+    st.session_state.messages = []
+    st.rerun()
