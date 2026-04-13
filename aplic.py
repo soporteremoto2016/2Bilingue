@@ -23,7 +23,7 @@ def save_data(data):
 
 data = load_data()
 
-# --- FUNCIÓN PARA LIMPIAR SESIÓN AL CAMBIAR DE USUARIO ---
+# --- FUNCIÓN PARA LIMPIAR SESIÓN ---
 def clear_session_data():
     st.session_state.messages = []
     st.session_state.topic = ""
@@ -35,21 +35,17 @@ if "user" not in st.session_state:
 
 if not st.session_state.user:
     st.title("🔐 Acceso 2Bilingue Pro")
-    st.info(f"Nota: Se requiere la contraseña de acceso autorizada.")
     
     user = st.text_input("Nombre de Usuario")
     password = st.text_input("Contraseña de Seguridad", type="password")
 
     if st.button("Ingresar"):
         user = user.strip()
-        
-        # VALIDACIÓN DE CONTRASEÑA MAESTRA
         if password != PASSWORD_REQUERIDA:
-            st.error("Contraseña de seguridad incorrecta. Acceso denegado.")
+            st.error("Contraseña de seguridad incorrecta.")
         elif not user:
             st.warning("Por favor, ingresa un nombre de usuario.")
         else:
-            # Si el usuario ya existe, entramos. Si no, lo creamos con esa contraseña.
             if user not in data:
                 data[user] = {
                     "password": PASSWORD_REQUERIDA,
@@ -57,15 +53,13 @@ if not st.session_state.user:
                     "errores": []
                 }
                 save_data(data)
-                st.success(f"Usuario '{user}' registrado exitosamente.")
             
-            # Limpiar rastro de sesiones anteriores y loguear
             clear_session_data()
             st.session_state.user = user
             st.rerun()
     st.stop()
 
-# ---------------- VALIDACIÓN DE SEGURIDAD ----------------
+# ---------------- VALIDACIÓN DE USUARIO ----------------
 if st.session_state.user not in data:
     st.session_state.user = None
     st.rerun()
@@ -112,14 +106,13 @@ if not st.session_state.api_key:
 
 client = OpenAI(api_key=st.session_state.api_key)
 
-# ---------------- SYSTEM PROMPT (PATY) ----------------
+# ---------------- SYSTEM PROMPT ----------------
 SYSTEM_PROMPT = """
 You are Paty, a professional English teacher for Spanish speakers.
-Eres una profesora de (Ingles - Español) especializada en educar a personas desde el nivel A1 hasta C2.
-- Siempre habla en inglés para la conversación.
-- Si detectas errores, detente y corrígelos en ESPAÑOL de forma amable.
-- Empieza preguntando el nivel de inglés (A1-C2) para ajustar tu vocabulario.
-- Al final de la sesión (si dicen 'finalizar'), entrega un reporte detallado.
+- Speak in English for the conversation.
+- If the user makes a mistake, correct it in SPANISH.
+- Always ask for the English level (A1-C2) at the beginning.
+- Provide fluency and error statistics.
 
 Format for corrections:
 Corrección:
@@ -128,35 +121,32 @@ Corrección:
 - Explicación:
 """
 
-# ---------------- TEMA DE PRÁCTICA ----------------
+# ---------------- TEMA ----------------
 if "topic" not in st.session_state:
     st.session_state.topic = ""
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if not st.session_state.topic:
     st.title("🌍 2Bilingue Pro")
-    tema = st.text_input("🎯 ¿Qué tema te gustaría practicar hoy con Paty?")
+    tema = st.text_input("🎯 ¿Qué tema te gustaría practicar hoy?")
     if st.button("Comenzar Clase"):
         st.session_state.topic = tema
         st.session_state.messages = [
-            {"role": "assistant", "content": f"Hello! I'm Paty. I'm excited to practice '{tema}' with you. To start, what is your current English level?"}
+            {"role": "assistant", "content": f"Hello! I'm Paty. Let's talk about {tema}. What is your level (A1-C2)?"}
         ]
         st.rerun()
     st.stop()
 
-# ---------------- INTERFAZ DE CHAT ----------------
+# ---------------- CHAT ----------------
 st.title("👩‍🏫 Clase con Paty")
-st.caption(f"Tema actual: {st.session_state.topic}")
-
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# ---------------- ENTRADA (AUDIO O TEXTO) ----------------
+# ---------------- ENTRADA ----------------
 user_input = None
-audio = st.audio_input("🎤 Presiona para hablar")
+audio = st.audio_input("🎤 Habla con Paty")
 
 if "last_audio_id" not in st.session_state:
     st.session_state.last_audio_id = None
@@ -165,21 +155,59 @@ if audio:
     if id(audio) != st.session_state.last_audio_id:
         st.session_state.last_audio_id = id(audio)
         try:
-            with st.spinner("Paty te está escuchando..."):
+            with st.spinner("Paty escucha..."):
                 transcript = client.audio.transcriptions.create(model="whisper-1", file=audio)
                 user_input = transcript.text
         except Exception as e:
-            st.error(f"Error procesando audio: {e}")
+            st.error(f"Error: {e}")
 
 if not modo_continuo:
-    text_input = st.chat_input("Escribe tu mensaje aquí...")
+    text_input = st.chat_input("Escribe aquí...")
     if text_input:
         user_input = text_input
 
-# ---------------- LÓGICA DE RESPUESTA ----------------
+# ---------------- PROCESAR ----------------
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.write(user_input)
 
-    with st.
+    with st.chat_message("assistant"):
+        try:
+            with st.spinner("Respondiendo..."):
+                full_messages = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": f"Topic: {st.session_state.topic}"}
+                ] + st.session_state.messages
+
+                response = client.chat.completions.create(model="gpt-4o-mini", messages=full_messages)
+                reply = response.choices[0].message.content
+                st.write(reply)
+
+                # Audio
+                audio_res = client.audio.speech.create(model="tts-1", voice="nova", input=reply[:4096])
+                st.audio(audio_res.content, format="audio/mp3")
+                st.session_state.messages.append({"role": "assistant", "content": reply})
+
+                # Stats y Guardado
+                if "Corrección:" in reply:
+                    user_data["errores"].append(reply)
+                
+                data[st.session_state.user] = user_data
+                save_data(data)
+        except Exception as e:
+            st.error(f"Error API: {e}")
+
+# ---------------- BOTONES ----------------
+st.divider()
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("🇪🇸 Traducir"):
+        if st.session_state.messages:
+            last = [m for m in st.session_state.messages if m["role"] == "assistant"][-1]["content"]
+            tr = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": f"Traduce: {last}"}])
+            st.info(tr.choices[0].message.content)
+with col2:
+    if st.button("🧹 Nuevo Tema"):
+        clear_session_data()
+        st.rerun()
