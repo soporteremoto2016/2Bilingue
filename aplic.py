@@ -79,6 +79,9 @@ with st.sidebar:
 
     if st.session_state.api_key:
         st.success("API conectada")
+        if st.button("Cambiar API Key"):
+            st.session_state.api_key = ""
+            st.rerun()
     else:
         api_input = st.text_input("API Key", type="password")
         if st.button("Guardar API Key"):
@@ -86,37 +89,30 @@ with st.sidebar:
             st.rerun()
 
 if not st.session_state.api_key:
-    st.warning("Ingresa tu API Key")
+    st.warning("Ingresa tu API Key para continuar")
     st.stop()
 
-if not st.session_state.api_key.startswith("sk-"):
-    st.error("API Key inválida")
-    st.stop()
-
+# Inicialización segura del cliente
 client = OpenAI(api_key=st.session_state.api_key)
 
 # ---------------- SYSTEM PROMPT ----------------
 SYSTEM_PROMPT = """
 You are Lucy, a professional English teacher for Spanish speakers.
-
 - Always speak in English.
 - Correct errors in Spanish.
 
 Format:
-
 Corrección:
 - Error:
 - Corrección:
 - Explicación:
 
 If user says "finalizar":
-
 📊 Evaluación final:
 - Fluidez: %
 - Gramática: %
 - Vocabulario: %
 - Puntuación general: %
-
 🧠 Nivel estimado:
 📈 Recomendaciones:
 """
@@ -135,12 +131,11 @@ if not st.session_state.topic:
             {"role": "assistant", "content": f"Great! Let's talk about {tema}. 😊"}
         ]
         st.rerun()
-
     st.stop()
 
-# ---------------- CHAT ----------------
+# ---------------- CHAT INTERFACE ----------------
 st.title("🌍 2Bilingue Pro - Lucy 👩‍🏫")
-st.info("🎧 Habla con Lucy y mantén una conversación continua")
+st.info(f"Tema actual: **{st.session_state.topic}**")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -149,30 +144,30 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# ---------------- INPUT ----------------
+# ---------------- INPUT LOGIC ----------------
 user_input = None
 
-# 🎤 AUDIO CONTINUO
+# 🎤 AUDIO
 audio = st.audio_input("🎤 Habla")
 
 if "last_audio_id" not in st.session_state:
     st.session_state.last_audio_id = None
 
 if audio:
-    current_audio_id = str(audio)
-
+    current_audio_id = id(audio) # Usamos id para detectar cambio de archivo
     if current_audio_id != st.session_state.last_audio_id:
         st.session_state.last_audio_id = current_audio_id
+        try:
+            with st.spinner("🎧 Transcribiendo..."):
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1", 
+                    file=audio
+                )
+                user_input = transcript.text
+        except Exception as e:
+            st.error(f"Error en transcripción: {e}")
 
-        with st.spinner("🎧 Escuchando..."):
-            transcript = client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
-                file=audio
-            )
-
-        user_input = transcript.text
-
-# 💬 TEXTO (solo si no está en modo continuo)
+# 💬 TEXTO
 if not modo_continuo:
     text_input = st.chat_input("Escribe en inglés...")
     if text_input:
@@ -181,83 +176,79 @@ if not modo_continuo:
 # ---------------- PROCESAR ----------------
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.write(user_input)
 
     with st.chat_message("assistant"):
-        with st.spinner("Lucy responde..."):
+        try:
+            with st.spinner("Lucy responde..."):
+                messages = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": f"Topic: {st.session_state.topic}"}
+                ] + st.session_state.messages
 
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "system", "content": f"Topic: {st.session_state.topic}"}
-            ] + st.session_state.messages
+                # Chat Completion
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages
+                )
+                reply = response.choices[0].message.content
+                st.write(reply)
 
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages
-            )
+                # Text-to-Speech
+                audio_response = client.audio.speech.create(
+                    model="tts-1",
+                    voice="alloy",
+                    input=reply
+                )
+                st.audio(audio_response.content, format="audio/mp3")
 
-            reply = response.choices[0].message.content
-            st.write(reply)
+                st.session_state.messages.append({"role": "assistant", "content": reply})
 
-            # 🔊 RESPUESTA EN VOZ
-            audio_response = client.audio.speech.create(
-                model="gpt-4o-mini-tts",
-                voice="alloy",
-                input=reply
-            )
+                # Lógica de guardado y stats
+                if "Corrección:" in reply:
+                    user_data["errores"].append(reply)
 
-            st.audio(audio_response.content, format="audio/mp3")
+                if "Evaluación final" in reply:
+                    stats["conversaciones"] += 1
+                    match = re.search(r'Puntuación general: (\d+)', reply)
+                    if match:
+                        score = int(match.group(1))
+                        prev = stats["promedio"]
+                        n = stats["conversaciones"]
+                        stats["promedio"] = int((prev * (n - 1) + score) / n)
+                        
+                        # Actualizar nivel
+                        if score < 40: stats["nivel"] = "A1"
+                        elif score < 60: stats["nivel"] = "A2"
+                        elif score < 75: stats["nivel"] = "B1"
+                        elif score < 90: stats["nivel"] = "B2"
+                        else: stats["nivel"] = "C1"
 
-            st.session_state.messages.append({"role": "assistant", "content": reply})
-
-            # Guardar errores
-            if "Corrección:" in reply:
-                user_data["errores"].append(reply)
-
-            # Evaluación
-            if "Evaluación final" in reply:
-                stats["conversaciones"] += 1
-
-                match = re.search(r'Puntuación general: (\d+)', reply)
-                if match:
-                    score = int(match.group(1))
-                    prev = stats["promedio"]
-                    n = stats["conversaciones"]
-
-                    stats["promedio"] = int((prev * (n - 1) + score) / n)
-
-                    if score < 40:
-                        stats["nivel"] = "A1"
-                    elif score < 60:
-                        stats["nivel"] = "A2"
-                    elif score < 75:
-                        stats["nivel"] = "B1"
-                    elif score < 90:
-                        stats["nivel"] = "B2"
-                    else:
-                        stats["nivel"] = "C1"
-
-            data[st.session_state.user] = user_data
-            save_data(data)
+                data[st.session_state.user] = user_data
+                save_data(data)
+                
+        except Exception as e:
+            st.error(f"Hubo un problema con la API: {e}")
 
 # ---------------- BOTONES ----------------
+st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("🇪🇸 Traducir"):
+    if st.button("🇪🇸 Traducir última respuesta"):
         if st.session_state.messages:
-            texto = st.session_state.messages[-1]["content"]
-            traducido = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": f"Traduce al español: {texto}"}]
-            )
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": traducido.choices[0].message.content
-            })
-            st.rerun()
+            last_msg = [m for m in st.session_state.messages if m["role"] == "assistant"][-1]["content"]
+            try:
+                traducido = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": f"Traduce al español: {last_msg}"}]
+                )
+                st.info(traducido.choices[0].message.content)
+            except:
+                st.error("No se pudo traducir.")
 
 with col2:
-    if st.button("🧹 Limpiar"):
+    if st.button("🧹 Limpiar Chat"):
         st.session_state.messages = []
         st.rerun()
-
