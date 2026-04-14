@@ -11,7 +11,7 @@ st.markdown("""
     <style>
     /* Fondo azul cálido para toda la app */
     .stApp {
-        background-color: #E3F2FD; 
+        background-color: #F0F4F8; 
     }
     
     /* Contenedor blanco para el Login (Recuadro) */
