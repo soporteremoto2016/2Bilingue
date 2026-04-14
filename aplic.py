@@ -128,7 +128,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if not st.session_state.topic:
-    st.title("🌍 2Bilingue Pro")
+    st.title("🌍 2Bilingue")
     tema = st.text_input("🎯 ¿Qué tema te gustaría practicar hoy?")
     if st.button("Comenzar Clase"):
         st.session_state.topic = tema
