@@ -4,7 +4,7 @@ import json
 import re
 
 # ---------------- CONFIG ----------------
-st.set_page_config(page_title="2Bilingue Pro", page_icon="🌍", layout="centered")
+st.set_page_config(page_title="2Bilingue", page_icon="🌍", layout="centered")
 
 # ---------------- CONSTANTES ----------------
 PASSWORD_REQUERIDA = "Seguridad2026*+"
