@@ -140,7 +140,8 @@ client = OpenAI(api_key=st.session_state.api_key)
 
 # ---------------- 7. PROMPT Y TEMA ----------------
 SYSTEM_PROMPT = """You are Paty, a professional English teacher. 
-Speak English, correct in Spanish. 
+Speak English, correct in Spanish.
+Before starting to respond, ask the user what level of English they want to practice, from A1 to C2. Do not continue if the user has not selected a level. Always keep the topic thread based on the selected English practice level.
 Provide a summary with 'Evaluación final' and 'Puntuación general: [0-100]' when finished."""
 
 if "topic" not in st.session_state:
