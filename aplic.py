@@ -34,7 +34,7 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 if not st.session_state.user:
-    st.title("🔐 Acceso 2Bilingue Pro")
+    st.title("🔐 Acceso 2Bilingue")
     
     user = st.text_input("Nombre de Usuario")
     password = st.text_input("Contraseña de Seguridad", type="password")
