@@ -6,6 +6,32 @@ import re
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="2Bilingue", page_icon="🌍", layout="centered")
 
+# --- ESTILOS PERSONALIZADOS (Azul cálido y Recuadro) ---
+st.markdown("""
+    <style>
+    /* Fondo de la aplicación */
+    .stApp {
+        background-color: #E3F2FD; /* Azul cálido muy claro */
+    }
+    
+    /* Contenedor del Login */
+    .login-box {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+        margin-top: -50px;
+    }
+    
+    /* Ajuste de títulos dentro del login */
+    .login-title {
+        color: #1E88E5;
+        text-align: center;
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # ---------------- CONSTANTES ----------------
 PASSWORD_REQUERIDA = "Seguridad2026*+"
 
@@ -34,29 +60,35 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 if not st.session_state.user:
-    st.title("🔐 Acceso 2Bilingue")
+    # Usamos un contenedor de columnas para centrar el recuadro
+    col1, col2, col3 = st.columns([1, 2, 1])
     
-    user = st.text_input("Nombre de Usuario")
-    password = st.text_input("Contraseña de Seguridad", type="password")
+    with col2:
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        st.markdown('<h1 class="login-title">🔐 Acceso 2Bilingue</h1>', unsafe_allow_html=True)
+        
+        user = st.text_input("Nombre de Usuario")
+        password = st.text_input("Contraseña de Seguridad", type="password")
 
-    if st.button("Ingresar"):
-        user = user.strip()
-        if password != PASSWORD_REQUERIDA:
-            st.error("Contraseña de seguridad incorrecta.")
-        elif not user:
-            st.warning("Por favor, ingresa un nombre de usuario.")
-        else:
-            if user not in data:
-                data[user] = {
-                    "password": PASSWORD_REQUERIDA,
-                    "stats": {"conversaciones": 0, "promedio": 0, "nivel": "A1"},
-                    "errores": []
-                }
-                save_data(data)
-            
-            clear_session_data()
-            st.session_state.user = user
-            st.rerun()
+        if st.button("Ingresar", use_container_width=True):
+            user = user.strip()
+            if password != PASSWORD_REQUERIDA:
+                st.error("Contraseña de seguridad incorrecta.")
+            elif not user:
+                st.warning("Por favor, ingresa un nombre de usuario.")
+            else:
+                if user not in data:
+                    data[user] = {
+                        "password": PASSWORD_REQUERIDA,
+                        "stats": {"conversaciones": 0, "promedio": 0, "nivel": "A1"},
+                        "errores": []
+                    }
+                    save_data(data)
+                
+                clear_session_data()
+                st.session_state.user = user
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ---------------- VALIDACIÓN DE USUARIO ----------------
@@ -196,18 +228,3 @@ if user_input:
                 data[st.session_state.user] = user_data
                 save_data(data)
         except Exception as e:
-            st.error(f"Error API: {e}")
-
-# ---------------- BOTONES ----------------
-st.divider()
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("🇪🇸 Traducir"):
-        if st.session_state.messages:
-            last = [m for m in st.session_state.messages if m["role"] == "assistant"][-1]["content"]
-            tr = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": f"Traduce: {last}"}])
-            st.info(tr.choices[0].message.content)
-with col2:
-    if st.button("🧹 Nuevo Tema"):
-        clear_session_data()
-        st.rerun()
